@@ -8,12 +8,15 @@ metadata:
   namespace: pihole
 data:
   TZ: "Europe/Berlin"
-  # Upstream DNS: FritzBox (recursive resolver / forwarder of the home network).
-  # Multiple upstreams would be semicolon-separated: "192.168.50.1;1.1.1.1"
-  FTLCONF_dns_upstreams: "192.168.50.1"
+  # Upstream DNS: 192.168.50.3 is the VM's default gateway AND its working DNS
+  # (verified 2026-08-19: heise.de resolves, while documented FritzBox 192.168.50.1
+  # is entirely unreachable — likely does not exist in this network).
+  # Multiple upstreams would be semicolon-separated: "192.168.50.3;1.1.1.1"
+  FTLCONF_dns_upstreams: "192.168.50.3"
   # "all" = answer queries from non-local sources. Required because LAN clients
   # (192.168.50.0/24) reach the pod via ServiceLB hostPort DNAT, not local subnet.
   # (Official docker example uses FTLCONF_dns_listeningMode=all for port-mapped setups.)
   FTLCONF_dns_listeningMode: "all"
-  # Reverse-DNS for local network via FritzBox: enable, local-domain, server, domain
-  FTLCONF_dns_revServers: "true,192.168.50.0/24,192.168.50.1,fritz.box"
+  # Reverse-DNS for local network: enable, local-domain, server, domain
+  # (server = gateway 192.168.50.3; fritz.box domain kept for local names)
+  FTLCONF_dns_revServers: "true,192.168.50.0/24,192.168.50.3,fritz.box"
