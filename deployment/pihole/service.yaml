@@ -1,0 +1,28 @@
+# Pi-hole Service — LoadBalancer via K3s ServiceLB
+# externalTrafficPolicy: Local preserves the client source IP so Pi-hole
+# can map clients (Nepis tablet, Switch, etc.) to groups.
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole
+  namespace: pihole
+  labels:
+    app: pihole
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: pihole
+  ports:
+    - name: dns-udp
+      port: 53
+      protocol: UDP
+      targetPort: 53
+    - name: dns-tcp
+      port: 53
+      protocol: TCP
+      targetPort: 53
+    - name: web
+      port: 80
+      protocol: TCP
+      targetPort: 80

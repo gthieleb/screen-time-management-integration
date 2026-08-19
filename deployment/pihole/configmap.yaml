@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pihole-config
+  namespace: pihole
+data:
+  # Upstream DNS: FritzBox (acts as recursive resolver / forwarder)
+  FTLCONF_DNS_UPSTREAMS: "192.168.50.1"
+  # IPv4 address Pi-hole advertises itself with (K3s node / ServiceLB external IP)
+  FTLCONF_LOCAL_IPV4: "192.168.50.80"
+  TZ: "Europe/Berlin"
+  # single = listen only on a single interface (binds via ServiceLB node IP)
+  FTLCONF_DNS_LISTENING: "single"
+  # Web interface listen address
+  FTLCONF_WEBPORTAL_ADDR: ":80"
