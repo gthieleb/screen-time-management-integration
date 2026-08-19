@@ -1,0 +1,20 @@
+# PiHoleMCP Service — LoadBalancer via K3s ServiceLB.
+# Port 8473 is free on the node (80/443=traefik, 53/8080=pihole).
+# Reachable at 192.168.50.80:8473 (LAN) and 100.109.202.81:8473 (Tailscale).
+# Bearer-token protected (MCP_BEARER_TOKEN secret).
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-mcp
+  namespace: mcp
+  labels:
+    app: pihole-mcp
+spec:
+  type: LoadBalancer
+  selector:
+    app: pihole-mcp
+  ports:
+    - name: mcp
+      port: 8473
+      protocol: TCP
+      targetPort: 8473

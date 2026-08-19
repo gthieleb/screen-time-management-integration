@@ -1,0 +1,68 @@
+# PiHoleMCP — MCP server wrapping Pi-hole v6 REST API
+# Source: https://github.com/EthanOrr930/PiHoleMCP (built locally, image
+# imported into k3s containerd — see docs/pre-flight-checks.md §4 for the
+# node's containerd DNS issue and the ctr import workaround)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pihole-mcp
+  namespace: mcp
+  labels:
+    app: pihole-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pihole-mcp
+  template:
+    metadata:
+      labels:
+        app: pihole-mcp
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      containers:
+        - name: pihole-mcp
+          # Locally built image (docker build from EthanOrr930/PiHoleMCP),
+          # imported via `k3s ctr images import`. Do NOT change pull policy —
+          # the node cannot resolve ghcr.io/docker.io (containerd DNS issue).
+          image: docker.io/library/pihole-mcp:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PIHOLE_URL
+              value: "http://pihole.pihole.svc.cluster.local:8080"
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_PORT
+              value: "8473"
+            - name: MCP_PATH
+              value: "/mcp"
+            - name: MCP_ALLOWED_ORIGINS
+              value: "*"
+          envFrom:
+            - secretRef:
+                name: pihole-mcp-secrets
+          resources:
+            requests:
+              cpu: 1m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 256Mi
+          ports:
+            - name: mcp
+              containerPort: 8473
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: 8473
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8473
+            initialDelaySeconds: 20
+            periodSeconds: 10

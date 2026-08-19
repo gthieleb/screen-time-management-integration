@@ -210,3 +210,54 @@ kubectl describe pvc -n pihole pihole-config
 ### Fix
 
 Falls `local-path` fehlt, alternative `storageClassName` verwenden oder das Verzeichnis auf dem Host anlegen. Siehe K3s-Doku zum local-path-provisioner.
+---
+
+## PiHoleMCP (MCP-Adapter)
+
+### K8s-Deployment: intermittierender Socket-Verlust (offen)
+
+**Symptom (2026-08-19):** `pihole-mcp` Pod auf dem k3s-Node startet (Uvicorn
+loggt "running on 0.0.0.0:8473"), aber der Listening-Socket verschwindet
+nach Sekunden wieder — Readiness/Liveness-Probes (tcpSocket) schlagen
+intermittierend fehl, kubelet killt den Container (Exit 137). Im Container
+selbst: `/proc/net/tcp` zeigt zeitweise keinen Listener, obwohl der Prozess
+läuft. Keine Fehler in den Logs.
+
+**Verdacht:** gVisor-RuntimeClass / CNI-Interaktion mit uvicorn auf dem
+k3s-Node. Der identische Container läuft lokal (Docker, bare Ubuntu) stabil.
+
+**Workaround (aktiv):** PiHoleMCP läuft lokal im Docker und erreicht Pi-hole
+über Tailscale:
+
+```bash
+docker run -d --name pihole-mcp -p 127.0.0.1:8473:8473 \
+  -e PIHOLE_URL=http://100.109.202.81:8080 \
+  -e PIHOLE_APP_PASSWORD='<pihole-web-pw>' \
+  -e MCP_BEARER_TOKEN='<32byte-token>' \
+  -e MCP_HOST=0.0.0.0 -e MCP_PORT=8473 -e MCP_PATH=/mcp \
+  pihole-mcp:local
+```
+
+Image lokal bauen (kein offizielles Registry-Image, Stand 2026-08):
+`git clone https://github.com/EthanOrr930/PiHoleMCP && docker build -f docker/Dockerfile -t pihole-mcp:local .`
+
+**Aufräumen des K8s-Versuchs:** Manifeste unter `deployment/pihole-mcp/`
+sind lauffähig, aber auf Grund des Bugs aktuell nicht angewendet
+(`kubectl delete -k deployment/pihole-mcp/` wurde ausgeführt).
+Secret `pihole-mcp-secrets` existiert noch im Namespace `mcp`.
+
+### Pi-hole v6 API-Pfadreferenz (FTL v6.4.3)
+
+| Zweck | Korrekt | Veraltet/nicht vorhanden |
+|---|---|---|
+| Version | `GET /api/info/version` | ~~`/api/version`~~ (404) |
+| Stats-Summary | `GET /api/stats/summary` | ~~`/api/stats`~~ (404) |
+| Gravity-Zähler | `summary.gravity.domains_being_blocked` | — |
+| Blocking-Status | `GET /api/dns/blocking` | — |
+| Domain-Regel anlegen | `POST /api/domains/{allow|deny}/{exact|regex}` | ~~`POST /api/domains?type=block`~~ |
+| Domain-Regel löschen | `DELETE /api/domains/{type}/{kind}/{domain}` | — |
+| Einzelne Domain lesen | `GET /api/domains/{type}/{kind}/{domain}` → `{"domains":[…]}` (Plural-Key!) | — |
+| Listen filtern | client-seitig filtern | `?domain=`-Param filtert NICHT serverseitig |
+
+MCP-Tool `remove_domain_rule` nutzt `type: "deny"` (nicht "block") und
+erfordert `confirm: true`.

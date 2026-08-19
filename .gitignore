@@ -1,0 +1,12 @@
+# secrets / local credentials
+.pihole-pw
+.mcp-token
+.mcp-sid
+*.env
+.env
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

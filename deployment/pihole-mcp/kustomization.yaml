@@ -1,0 +1,12 @@
+# PiHoleMCP Kustomization
+#
+# NOTE: secret pihole-mcp-secrets is created imperatively (never in git):
+#   kubectl create secret generic pihole-mcp-secrets -n mcp \
+#     --from-literal=PIHOLE_APP_PASSWORD='<pihole-web-pw>' \
+#     --from-literal=MCP_BEARER_TOKEN='<32byte-token>'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mcp
+resources:
+  - deployment.yaml
+  - service.yaml
