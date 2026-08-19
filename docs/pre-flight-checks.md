@@ -1,13 +1,18 @@
-# Pre-Flight-Checks (Wave 1)
+# Pre-Flight-Checks (Wave 1) — DEPLOYED
 
 Ergebnisse der Pre-Flight-Checks vor dem Pi-hole-K3s-Deployment.
-Datum: 2026-08-17
+Datum: 2026-08-17 (Checks), **2026-08-19 (Deployment erfolgreich durchgeführt)**
 
-## Zusammenfassung
+## Status: ✅ LIVE
 
-**Go/No-Go: GO**
+Pi-hole läuft produktiv auf dem qnap-k3s-Cluster:
 
-Alle relevanten Checks bestanden. Ein offener Punkt (Port 53 auf dem Host-Interface) muss vor dem endgültigen `kubectl apply` via SSH auf dem K3s-Host geprüft werden — betrifft nur den K3s-Host, nicht den Cluster selbst.
+| Endpoint | Adresse | Zweck |
+|---|---|---|
+| DNS (LAN) | `192.168.50.80:53` | Für alle Heimnetz-Clients (via FritzBox-DHCP zuweisen) |
+| DNS (Tailscale) | `100.109.202.81:53` | DNS-Filterung auch im Tailnet |
+| Web-UI | `http://192.168.50.80:8080/admin/` | Pi-hole Admin (LAN) |
+| Web-UI (Tailscale) | `http://100.109.202.81:8080/admin/` | Pi-hole Admin (Tailnet) |
 
 ## Check-Ergebnisse
 
@@ -21,47 +26,66 @@ Alle relevanten Checks bestanden. Ein offener Punkt (Port 53 auf dem Host-Interf
 | 6 | freier RAM auf k3s | > 8 GB | 12.6 GB frei | PASS |
 | 7 | CoreDNS im Cluster | ClusterIP, kein Host-Port 53 | ClusterIP 10.43.0.10 | PASS |
 | 8 | ServiceLB vergibt Node-IP | 192.168.50.80 | 192.168.50.80 (Traefik: 192.168.50.30, 192.168.50.80) | PASS |
-| 9 | Port 53 auf Host-Interface frei | kein Listener auf :53 | via `kubectl` nicht prüfbar | OFFEN |
+| 9 | Port 53 auf Host | kein Konflikt | systemd-resolved bindet NUR 127.0.0.53/54 (Loopback); ServiceLB nutzt iptables-DNAT, keine Socket-Kollision | PASS (2026-08-19) |
+| 10 | Port 80 auf Node | für Web-UI nutzbar | **BELEGT durch traefik svclb** → Web-UI auf 8080 gelegt | FIXED |
 
-## Offener Punkt: Port 53 Host-Check
+## Wichtige Erkenntnisse vom Deployment-Tag (2026-08-19)
 
-Pi-hole benötigt Port 53 (UDP/TCP) auf dem Host-Interface. Die Prüfung via `kubectl` ist nicht möglich — sie muss direkt auf dem K3s-Host ausgeführt werden.
+### 1. Netzwerk-Topologie weicht von der Doku ab
 
-**Voraussetzung:** Tailscale-Auth auf dem K3s-Host, SSH-Zugriff auf `gun@k3s`.
+- **Default-Gateway und DNS der VM ist `192.168.50.3`**, nicht `192.168.50.1`
+- **`192.168.50.1` (laut qnap-k3s-Doku die FritzBox) ist vollständig unerreichbar** (kein Ping, kein DNS) — dort existiert wahrscheinlich kein Gerät
+- `192.168.50.3` liefert funktionierendes DNS (getestet: heise.de, registry-1.docker.io)
+- **Pi-hole Upstream ist daher `192.168.50.3`** (siehe configmap.yaml)
+- ⚠️ **OFFEN:** Was ist 192.168.50.3 für ein Gerät? (FritzBox mit anderer IP? Anderer Router?) Muss für die FritzBox-DNS-Umstellung geklärt werden.
 
-**Befehl:**
-```bash
-ssh gun@k3s 'sudo ss -tulnp | grep :53'
-```
+### 2. Port 80/443 sind durch traefik svclb belegt
 
-**Erwartetes Ergebnis:** Kein Output (= Port 53 frei) oder nur Pi-hole selbst nach dem Deployment.
+Klipper-lb (ServiceLB) advertised die Node-IP nicht für einen zweiten LB-Service mit gleichem Port. Web-UI des Pi-hole läuft daher auf **LB-Port 8080** (Pod-intern Port 80).
 
-**Falls `systemd-resolved` blockt:** Siehe [troubleshooting.md](troubleshooting.md).
+### 3. systemd-resolved ist KEIN Problem für DNS-Port 53
+
+svclb-Pods arbeiten mit hostPort-**DNAT (iptables)**, nicht mit Host-Socket-Binds. Der Stub-Listener auf 127.0.0.53:53 kollidiert nicht.
+
+### 4. containerd-Image-Pull-DNS-Problem (Workaround aktiv)
+
+`containerd` auf dem k3s-Node kann `registry-1.docker.io` nicht auflösen (`EAI_AGAIN`), obwohl beide Nameserver der Host-resolv.conf (`192.168.50.3`, `fd00::7eff:...`) einzeln funktionieren. Ursache unklar (vermutlich Go-Resolver + IPv6-Nameserver-Timeout).
+
+**Workaround (angewendet):** Image lokal gepullt, per `kubectl cp` auf den Node transferiert und via `k3s ctr images import` importiert. Bei künftigen Image-Updates wiederholen oder Node-DNS fixen (siehe troubleshooting.md).
+
+### 5. Pi-hole v6 API-Details
+
+- Listen-Endpoint erwartet `type` als **Query-Parameter** (`POST /api/lists?type=block`), nicht im JSON-Body
+- Listen werden beim Hinzufügen automatisch heruntergeladen (gravity)
+
+## Aktive Blocklists
+
+| Liste | Zweck |
+|---|---|
+| StevenBlack hosts | Ads + Malware (Basisliste) |
+| AdGuard DNS Filter | Ads (inkl. Mobile) |
 
 ## Befehle zum Wiederholen der Checks
 
 ```bash
-# Nodes + Rollen
-kubectl get nodes -o wide
+export KUBECONFIG=~/.kube/qnap-k3s
 
-# Node-Ressourcen (metrics-server vorausgesetzt)
-kubectl top node k3s
+# Pods + Service Status
+kubectl get pods,svc -n pihole -o wide
 
-# CoreDNS Service
-kubectl get svc -n kube-system -l k8s-app=kube-dns
+# DNS-Resolutionstest (via Tailscale)
+nslookup heise.de 100.109.202.81
+nslookup doubleclick.net 100.109.202.81   # erwartet: 0.0.0.0
 
-# Alle Services mit External-IP (ServiceLB-Verhalten prüfen)
-kubectl get svc --all-namespaces -o wide
-
-# Pods auf dem k3s-Node
-kubectl get pods --all-namespaces -o wide --field-selector spec.nodeName=k3s
-
-# Host-Port 53 (auf dem K3s-Host direkt)
-ssh gun@k3s 'sudo ss -tulnp | grep :53'
+# Host-Port 53 (via Debug-Pod, kein SSH nötig)
+kubectl run portcheck --rm -i --restart=Never --image=busybox:1.36 -n mcp \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"k3s"},"hostNetwork":true,"tolerations":[{"key":"node-role.kubernetes.io/control-plane","effect":"NoSchedule"}]}}' \
+  -- nslookup heise.de
 ```
 
 ## Nächste Schritte
 
-1. Offenen Port-53-Check via SSH klären.
-2. Manifeste anwenden: siehe [deployment-runbook.md](deployment-runbook.md).
-3. FRITZ!Box DNS umstellen: siehe [fritzbox-dns-setup.md](fritzbox-dns-setup.md).
+1. ⚠️ Klären, was `192.168.50.3` für ein Gerät ist (Router? FritzBox?) — Basis für die DHCP-DNS-Umstellung
+2. DHCP/DNS-Umstellung: siehe [fritzbox-dns-setup.md](fritzbox-dns-setup.md) — **an realer Geräte-IP anpassen**
+3. Erst Testgerät (z.B. Nepis Tablet), 24h beobachten, dann Rollout
+4. Optional: Wave 4 — PiHoleMCP-Adapter für KI-Steuerung
