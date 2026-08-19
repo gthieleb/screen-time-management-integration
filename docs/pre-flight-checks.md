@@ -37,7 +37,7 @@ Pi-hole läuft produktiv auf dem qnap-k3s-Cluster:
 - **`192.168.50.1` (laut qnap-k3s-Doku die FritzBox) ist vollständig unerreichbar** (kein Ping, kein DNS) — dort existiert wahrscheinlich kein Gerät
 - `192.168.50.3` liefert funktionierendes DNS (getestet: heise.de, registry-1.docker.io)
 - **Pi-hole Upstream ist daher `192.168.50.3`** (siehe configmap.yaml)
-- ⚠️ **OFFEN:** Was ist 192.168.50.3 für ein Gerät? (FritzBox mit anderer IP? Anderer Router?) Muss für die FritzBox-DNS-Umstellung geklärt werden.
+- ✅ **Bestätigt (2026-08-19):** `192.168.50.3` ist die FRITZ!Box (User-verifiziert, abweichend von der dokumentierten `.1`). DHCP-DNS-Umstellung muss auf `http://192.168.50.3` erfolgen.
 
 ### 2. Port 80/443 sind durch traefik svclb belegt
 
@@ -85,7 +85,7 @@ kubectl run portcheck --rm -i --restart=Never --image=busybox:1.36 -n mcp \
 
 ## Nächste Schritte
 
-1. ⚠️ Klären, was `192.168.50.3` für ein Gerät ist (Router? FritzBox?) — Basis für die DHCP-DNS-Umstellung
+1. ~~Klären, was `192.168.50.3` ist~~ ✅ FRITZ!Box (bestätigt) — WebUI: http://192.168.50.3
 2. DHCP/DNS-Umstellung: siehe [fritzbox-dns-setup.md](fritzbox-dns-setup.md) — **an realer Geräte-IP anpassen**
 3. Erst Testgerät (z.B. Nepis Tablet), 24h beobachten, dann Rollout
 4. Optional: Wave 4 — PiHoleMCP-Adapter für KI-Steuerung
