@@ -1,6 +1,15 @@
-# Pi-hole Service — LoadBalancer via K3s ServiceLB
+# Pi-hole Service — LoadBalancer via K3s ServiceLB (klipper-lb).
+#
 # externalTrafficPolicy: Local preserves the client source IP so Pi-hole
 # can map clients (Nepis tablet, Switch, etc.) to groups.
+#
+# Web UI runs on port 8080 (NOT 80): node port 80/443 are already taken by
+# traefik's svclb (hostPort DNAT). Klipper will not advertise the node IP for
+# a second LB service using the same port.
+#
+# DNS 53/udp+tcp is free on the node: systemd-resolved only binds
+# 127.0.0.53/127.0.0.54 (loopback) and klipper uses iptables DNAT, not
+# host socket binds — no conflict (verified 2026-08-19).
 apiVersion: v1
 kind: Service
 metadata:
@@ -23,6 +32,6 @@ spec:
       protocol: TCP
       targetPort: 53
     - name: web
-      port: 80
+      port: 8080
       protocol: TCP
       targetPort: 80

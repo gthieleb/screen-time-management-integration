@@ -1,15 +1,19 @@
+# Pi-hole v6 FTL configuration via environment variables.
+# Env syntax (official docs): FTLCONF_[section_][setting]
+# https://docs.pi-hole.net/docker/configuration/
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: pihole-config
   namespace: pihole
 data:
-  # Upstream DNS: FritzBox (acts as recursive resolver / forwarder)
-  FTLCONF_DNS_UPSTREAMS: "192.168.50.1"
-  # IPv4 address Pi-hole advertises itself with (K3s node / ServiceLB external IP)
-  FTLCONF_LOCAL_IPV4: "192.168.50.80"
   TZ: "Europe/Berlin"
-  # single = listen only on a single interface (binds via ServiceLB node IP)
-  FTLCONF_DNS_LISTENING: "single"
-  # Web interface listen address
-  FTLCONF_WEBPORTAL_ADDR: ":80"
+  # Upstream DNS: FritzBox (recursive resolver / forwarder of the home network).
+  # Multiple upstreams would be semicolon-separated: "192.168.50.1;1.1.1.1"
+  FTLCONF_dns_upstreams: "192.168.50.1"
+  # "all" = answer queries from non-local sources. Required because LAN clients
+  # (192.168.50.0/24) reach the pod via ServiceLB hostPort DNAT, not local subnet.
+  # (Official docker example uses FTLCONF_dns_listeningMode=all for port-mapped setups.)
+  FTLCONF_dns_listeningMode: "all"
+  # Reverse-DNS for local network via FritzBox: enable, local-domain, server, domain
+  FTLCONF_dns_revServers: "true,192.168.50.0/24,192.168.50.1,fritz.box"
